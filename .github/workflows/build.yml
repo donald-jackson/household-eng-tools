@@ -20,5 +20,5 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/donald-jackson/household-eng-tools:v1
+            ghcr.io/donald-jackson/household-eng-tools:v2
             ghcr.io/donald-jackson/household-eng-tools:latest
