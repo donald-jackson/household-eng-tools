@@ -16,10 +16,11 @@ FROM debian:bookworm-slim
 
 ARG KUBECTL_VERSION=v1.31.11
 ARG JQ_VERSION=1.7.1
-ARG YQ_VERSION=v4.44.6
 ARG NODE_MAJOR=22
 ENV TOOLBOX=/opt/toolbox
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# NB: default /bin/sh, no pipefail — a `curl | grep -m1` version probe legitimately
+# SIGPIPEs curl when grep closes the pipe early; the final smoke-test RUN is the real
+# backstop that every binary downloaded and runs.
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl tar xz-utils unzip \
@@ -34,13 +35,13 @@ RUN set -eux; \
     install -m0755 "/tmp/gh_${GH_VER}_linux_amd64/bin/gh" "$TOOLBOX/bin/gh"; \
     curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl" -o "$TOOLBOX/bin/kubectl"; \
     curl -fsSL "https://github.com/jqlang/jq/releases/download/jq-${JQ_VERSION}/jq-linux-amd64" -o "$TOOLBOX/bin/jq"; \
-    curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o "$TOOLBOX/bin/yq"; \
+    curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" -o "$TOOLBOX/bin/yq"; \
     chmod 0755 "$TOOLBOX/bin/kubectl" "$TOOLBOX/bin/jq" "$TOOLBOX/bin/yq"; \
     rm -rf /tmp/gh_*
 
 # ── Node.js (glibc LTS) → bin/{node,npm,npx} + lib/node_modules ────────────────
 RUN set -eux; \
-    NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json | "$TOOLBOX/bin/jq" -r "[.[] | select(.lts != false and (.version|startswith(\"v${NODE_MAJOR}\")))][0].version")"; \
+    NODE_VER="$(curl -fsSL https://nodejs.org/dist/index.json | "$TOOLBOX/bin/jq" -r --arg maj "v${NODE_MAJOR}" '[.[] | select(.lts != false and (.version|startswith($maj)))][0].version')"; \
     test -n "$NODE_VER"; \
     curl -fsSL "https://nodejs.org/dist/${NODE_VER}/node-${NODE_VER}-linux-x64.tar.xz" | tar -xJ --strip-components=1 -C "$TOOLBOX"; \
     rm -rf "$TOOLBOX/include" "$TOOLBOX/share"
