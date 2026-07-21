@@ -12,6 +12,24 @@
 #
 # Tools: gh, kubectl, jq, yq (static/glibc single binaries) · node/npm/npx + pnpm
 # (glibc) · aws-cli v2 (glibc bundle) · claude (Claude Code, glibc, checksum-verified).
+#
+# ALSO carries the pre-built Hermes WhatsApp bridge (Baileys) — the wabridge stage below
+# builds its node_modules against the hermes image's OWN node (ABI-matched) at build time
+# (full RAM, so no OOM) and writes the .hermes-pkg-hash skip-stamp. The agent chart drops
+# it into /opt/hermes/scripts/whatsapp-bridge at boot, so `hermes whatsapp` skips its
+# perms/OOM-prone runtime npm install and goes straight to QR pairing.
+
+# ── Hermes WhatsApp bridge, pre-built + stamped ───────────────────────────────
+FROM nousresearch/hermes-agent:v2026.6.19 AS wabridge
+USER root
+RUN set -eux; \
+    cd /opt/hermes/scripts/whatsapp-bridge; \
+    npm_config_unsafe_perm=true npm install --no-audit --no-fund; \
+    python3 -c "import hashlib,pathlib; pathlib.Path('node_modules/.hermes-pkg-hash').write_text(hashlib.sha256(pathlib.Path('package.json').read_bytes()).hexdigest()[:16])"; \
+    test -s node_modules/.hermes-pkg-hash; \
+    test -d node_modules/@whiskeysockets/baileys; \
+    echo "bridge built + stamped ($(cat node_modules/.hermes-pkg-hash))"
+
 FROM debian:bookworm-slim
 
 ARG KUBECTL_VERSION=v1.31.11
@@ -89,4 +107,11 @@ RUN set -eux; export PATH="$TOOLBOX/bin:$PATH"; \
     node --version; npm --version; npx --version; pnpm --version; aws --version; \
     claude --version || true; \
     echo "toolbox ready: $(ls "$TOOLBOX/bin" | tr '\n' ' ')"
+
+# ── carry the pre-built Hermes WhatsApp bridge (from the wabridge stage) ───────
+# The agent chart's whatsapp-bridge-stage initContainer copies this into the hermes
+# container's /opt/hermes/scripts/whatsapp-bridge, so Hermes finds node_modules + the
+# matching .hermes-pkg-hash and skips its (perms/OOM-prone) runtime npm install.
+COPY --from=wabridge /opt/hermes/scripts/whatsapp-bridge /opt/toolbox/hermes-bridges/whatsapp-bridge
+
 CMD ["/bin/bash"]
