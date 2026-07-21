@@ -54,15 +54,23 @@ RUN set -eux; \
     npm install -g pnpm@latest; \
     pnpm --version
 
-# ── AWS CLI v2 (glibc bundle) → aws-cli/ + a RELATIVE bin/aws symlink ──────────
-# The installer writes bin/aws as an ABSOLUTE symlink to the build-time install dir,
-# which breaks once the tree is staged to a different path — rewrite it to relative so
-# the whole toolbox is relocatable.
+# ── AWS CLI v2 (glibc bundle) → relocatable aws-cli/ + bin/aws ─────────────────
+# The installer writes ABSOLUTE internal symlinks (bin/aws and v2/current both point at
+# the build-time --install-dir), which dangle once the tree is staged to a different
+# path. Rewrite bin/aws + every symlink under aws-cli that points back into $TOOLBOX to a
+# relative one, so the whole toolbox is relocatable.
 RUN set -eux; \
     curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip; \
     unzip -q /tmp/awscliv2.zip -d /tmp; \
     /tmp/aws/install --install-dir "$TOOLBOX/aws-cli" --bin-dir "$TOOLBOX/bin"; \
     ln -sf ../aws-cli/v2/current/bin/aws "$TOOLBOX/bin/aws"; \
+    find "$TOOLBOX/aws-cli" -type l | while read -r l; do \
+        tgt="$(readlink "$l")"; \
+        case "$tgt" in \
+            "$TOOLBOX"/*) ln -sfn "$(realpath -m --relative-to="$(dirname "$l")" "$tgt")" "$l" ;; \
+        esac; \
+    done; \
+    "$TOOLBOX/bin/aws" --version; \
     rm -rf /tmp/awscliv2.zip /tmp/aws
 
 # ── Claude Code (glibc linux-x64), checksum-verified against the release manifest ──
