@@ -46,10 +46,13 @@ RUN set -eux; \
     curl -fsSL "https://nodejs.org/dist/${NODE_VER}/node-${NODE_VER}-linux-x64.tar.xz" | tar -xJ --strip-components=1 -C "$TOOLBOX"; \
     rm -rf "$TOOLBOX/include" "$TOOLBOX/share"
 
-# ── pnpm standalone (glibc) ───────────────────────────────────────────────────
+# ── pnpm (installed globally via the node we just staged → $TOOLBOX/bin/pnpm) ──
+# The GitHub release binary name is unstable across versions; installing through npm
+# lands a relocatable $TOOLBOX/bin/pnpm → ../lib/node_modules symlink instead.
 RUN set -eux; \
-    curl -fsSL "https://github.com/pnpm/pnpm/releases/latest/download/pnpm-linux-x64" -o "$TOOLBOX/bin/pnpm"; \
-    chmod 0755 "$TOOLBOX/bin/pnpm"
+    export PATH="$TOOLBOX/bin:$PATH"; \
+    npm install -g pnpm@latest; \
+    pnpm --version
 
 # ── AWS CLI v2 (glibc bundle) → aws-cli/ + a RELATIVE bin/aws symlink ──────────
 # The installer writes bin/aws as an ABSOLUTE symlink to the build-time install dir,
